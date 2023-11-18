@@ -4,6 +4,7 @@ import {
   Types,
   model,
 } from 'mongoose';
+import validation from '../utils/validators';
 import user from './user';
 
 interface ICard extends Document {
@@ -24,6 +25,7 @@ const cardSchema = new Schema<ICard>({
   link: {
     type: String,
     required: true,
+    validate: validation.linkValidationUser,
   },
   owner: {
     type: Schema.Types.ObjectId,
@@ -33,7 +35,7 @@ const cardSchema = new Schema<ICard>({
   likes: {
     type: [Types.ObjectId],
     default: [],
-    required: true,
+    ref: user,
   },
   createdAt: {
     type: Date,

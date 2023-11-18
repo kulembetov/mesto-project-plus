@@ -1,104 +1,116 @@
+import bcrypt from 'bcrypt';
 import { NextFunction, Request, Response } from 'express';
-import Errors from '../errors/errors';
+import jwt from 'jsonwebtoken';
+import mongoose from 'mongoose';
+import { JWT_SECRET } from '../config';
+import updateUserMiddleware from '../middlewares/userUpdater';
 import User from '../models/user';
+import HttpStatusCode from '../utils/constants';
 import { CustomRequest } from '../utils/type';
+import searchUser from '../utils/wrappers';
+
+const CustomError = require('../errors/CustomError');
 
 const getUsers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const users = await User.find({});
-    return res.status(200).json({ data: users });
+    return res.json({ data: users });
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    return next(error);
   }
 };
 
 const getUserById = async (req: Request, res: Response, next: NextFunction) => {
-  const { id } = req.params;
-
   try {
-    const user = await User.findById(id);
-    if (!user) {
-      return next(Errors.authorizationError('Пользователь не найден'));
-    }
-    return res.status(200).json({ data: user });
+    const auth = false;
+    return searchUser(req, res, next, auth);
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    if (error instanceof mongoose.Error.CastError) {
+      return next(CustomError.BadRequest('Неверный ID пользователя'));
+    }
+    return next(error);
+  }
+};
+
+const getUserInfo = async (req: CustomRequest, res: Response, next: NextFunction) => {
+  try {
+    const auth = true;
+    return searchUser(req, res, next, auth);
+  } catch (error) {
+    if (error instanceof mongoose.Error.CastError) {
+      return next(CustomError.BadRequest('Неверный ID пользователя'));
+    }
+    return next(error);
   }
 };
 
 const createUser = async (req: Request, res: Response, next: NextFunction) => {
-  const { name, about, avatar } = req.body;
-
-  if (!name || !about || !avatar) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
   try {
-    const user = await User.create({ name, about, avatar });
-    return res.status(201).json({ data: user });
-  } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
-  }
-};
-
-const updateUser = async (req: CustomRequest, res: Response, next: NextFunction) => {
-  const { name, about } = req.body;
-  const id = req.user?._id;
-
-  if (!name || !about) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
-  try {
-    const user = await User.findByIdAndUpdate(id, {
+    const {
       name,
       about,
-    }, {
-      new: true,
+      avatar,
+      email,
+      password,
+    } = req.body;
+
+    const hashPassword = await bcrypt.hash(password, 11);
+
+    const user = await User.create({
+      name,
+      about,
+      avatar,
+      email,
+      password: hashPassword,
     });
 
-    if (!user) {
-      return next(Errors.authorizationError('Пользователь не найден'));
+    return res.status(HttpStatusCode.CREATED).json({
+      data: {
+        name: user.name,
+        about: user.about,
+        avatar: user.avatar,
+        email: user.email,
+      },
+    });
+  } catch (error: any) {
+    if (error.name === 'MongoError' && error.code === 11000) {
+      return next(CustomError.Conflict('Пользователь с таким почтовым адресом уже существует'));
     }
-    return res.status(201).json({ data: user });
-  } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    if (error instanceof mongoose.Error.ValidationError) {
+      return next(CustomError.BadRequest('Некорректный формат данных'));
+    }
+    return next(error);
   }
 };
 
-const updateAvatar = async (req: CustomRequest, res: Response, next: NextFunction) => {
-  const avatar = req.body;
-  const id = req.user?._id;
-
-  if (!avatar) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
+const loginUser = async (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
-    const user = await User.findByIdAndUpdate(id, {
-      avatar,
-    }, {
-      new: true,
+    const { email, password } = req.body;
+    const user = await User.findUserByCredentials(email, password);
+    return res.send({
+      token: jwt.sign({ _id: user._id }, JWT_SECRET, { expiresIn: '7d' }),
     });
-
-    if (!user) {
-      return next(Errors.authorizationError('Пользователь не найден'));
-    }
-    return res.status(201).json({ data: user });
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    return next(error);
   }
+};
+
+const updateUser = (req: CustomRequest, res: Response, next: NextFunction) => {
+  const handleUpdateUser = true;
+  updateUserMiddleware(req, res, next, handleUpdateUser);
+};
+
+const updateAvatar = (req: CustomRequest, res: Response, next: NextFunction) => {
+  const handleUpdateUser = false;
+  updateUserMiddleware(req, res, next, handleUpdateUser);
 };
 
 export default {
   getUsers,
   getUserById,
+  getUserInfo,
   createUser,
+  loginUser,
   updateUser,
   updateAvatar,
 };

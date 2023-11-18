@@ -14,6 +14,7 @@
 * [Чеклист №3](https://code.s3.yandex.net/web-developer/checklists-pdf/web-plus/checklist-9.pdf)
 * [Чеклист №4](https://code.s3.yandex.net/web-developer/checklists-pdf/web-plus/checklist-10.pdf)
 * [Чеклист №5](https://code.s3.yandex.net/web-plus/checklists/checklist_pdf/checklist_20.pdf)
+* [Чеклист №6](https://code.s3.yandex.net/web-plus/checklists/checklist_pdf/checklist_21.pdf)
 
 ## Стек технологий
 * HTML5
@@ -36,6 +37,11 @@
 * Взаимодействие с сервером через API
 * Среда выполнения Node.js
 * Хранение данных пользователей с использованием MongoDB и ODM Mongoose
+* Авторизация и аутентификация пользователя
+* Схемы Mongoose
+* Контроллеры
+* Мидлвары
+* Логирование
 
 ## Инструкция по установке и запуску проекта
 
