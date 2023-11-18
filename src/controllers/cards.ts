@@ -1,100 +1,63 @@
 import { NextFunction, Request, Response } from 'express';
-import Errors from '../errors/errors';
+import mongoose from 'mongoose';
+import updateLikeCardMiddleware from '../middlewares/likeUpdater';
 import Card from '../models/card';
+import HttpStatusCode from '../utils/constants';
 import { CustomRequest } from '../utils/type';
+
+const CustomError = require('../errors/CustomError');
 
 const getCards = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const cards = await Card.find({});
-    return res.status(200).send({ data: cards });
+    const cards = await Card.find({}).populate(['owner', 'likes']);
+    return res.send({ data: cards });
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    return next(error);
   }
 };
 
 const createCard = async (req: CustomRequest, res: Response, next: NextFunction) => {
-  const { name, link } = req.body;
-  const owner = req.user?._id;
-
-  if (!name || !link || !owner) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
   try {
+    const { name, link } = req.body;
+    const owner = req.user?._id;
     const card = await Card.create({ name, link, owner });
-    return res.status(201).json({ data: card });
+    return res.status(HttpStatusCode.CREATED).json({ data: card });
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    if (error instanceof mongoose.Error.ValidationError) {
+      return next(CustomError.BadRequest('Некорректный формат данных'));
+    }
+    return next(error);
   }
 };
 
-const removeCard = async (req: Request, res: Response, next: NextFunction) => {
-  const { cardId } = req.params;
-
+const removeCard = async (req: CustomRequest, res: Response, next: NextFunction) => {
   try {
-    const card = await Card.findByIdAndRemove(cardId);
-    if (!card) {
-      return next(Errors.authorizationError('Вы не можете удалить карточку другого пользователя'));
+    const { cardId } = req.params;
+    const cardToDelete = await Card.findById(cardId).orFail();
+    if (cardToDelete.owner.toString() !== req.user?._id) {
+      throw CustomError.Unauthorized('Вы не можете удалить карточку другого пользователя');
     }
-    return res.status(204).json({ data: card });
+    const deleteCard = await cardToDelete.deleteOne();
+    return res.status(HttpStatusCode.NO_CONTENT).json({ data: deleteCard });
   } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
+    if (error instanceof mongoose.Error.DocumentNotFoundError) {
+      return next(CustomError.BadRequest('Карточка другого пользователя'));
+    }
+    if (error instanceof mongoose.Error.CastError) {
+      return next(CustomError.BadRequest('Неверный ID пользователя'));
+    }
+    return next(error);
   }
 };
 
-const likeCard = async (req: CustomRequest, res: Response, next: NextFunction) => {
-  const { cardId } = req.params;
-  const id = req.user?._id;
-
-  if (!cardId) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
-  try {
-    const card = await Card.findByIdAndUpdate(cardId, {
-      $addToSet: {
-        likes: id,
-      },
-    }, {
-      new: true,
-    });
-    if (!card) {
-      return next(Errors.notFoundError('Карточка не найдена'));
-    }
-    return res.status(201).json({ data: card });
-  } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
-  }
+const likeCard = (req: CustomRequest, res: Response, next: NextFunction) => {
+  const handleLikeCard = true;
+  updateLikeCardMiddleware(req, res, next, handleLikeCard);
 };
 
-const dislikeCard = async (req: CustomRequest, res: Response, next: NextFunction) => {
-  const { cardId } = req.params;
-  const id = req.user?._id;
-
-  if (!cardId) {
-    return next(Errors.badRequestError('Запрашиваемый пользователь не найден'));
-  }
-
-  try {
-    const card = await Card.findByIdAndUpdate(cardId, {
-      $pull: {
-        likes: id,
-      },
-    }, {
-      new: true,
-    });
-    if (!card) {
-      return next(Errors.notFoundError('Карточка не найдена'));
-    }
-    return res.status(204).json({ data: card });
-  } catch (error) {
-    console.error(error);
-    return next(Errors.internalError('На сервере произошла ошибка'));
-  }
+const dislikeCard = (req: CustomRequest, res: Response, next: NextFunction) => {
+  const handleLikeCard = false;
+  updateLikeCardMiddleware(req, res, next, handleLikeCard);
 };
 
 export default {

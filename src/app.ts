@@ -1,31 +1,34 @@
+/* eslint-disable no-console */
+import { errors } from 'celebrate';
 import express, {
   Application,
-  NextFunction,
-  Response,
   json,
 } from 'express';
 import mongoose from 'mongoose';
+import { PORT, db, server } from './config';
+import userControllers from './controllers/users';
+import authMiddleware from './middlewares/auth';
+import errorsMiddleware from './middlewares/errors';
+import logger from './middlewares/logger';
 import router from './routes/index';
-import { CustomRequest } from './utils/type';
-
-const { PORT = 3000 } = process.env;
+import validation from './validation/user';
 
 const app: Application = express();
 
 app.use(json());
+app.use(logger.requestLogger);
+app.use('/signin', validation.loginUserValidation, userControllers.loginUser);
+app.use('/signup', validation.createUserValidation, userControllers.createUser);
+app.use(authMiddleware);
 app.use('/', router);
-
-app.use((req: CustomRequest, res: Response, next: NextFunction) => {
-  req.user = {
-    _id: '65571aac46340c493b3fa1e3',
-  };
-
-  next();
-});
+app.use(logger.errorLogger);
+app.use(errors());
+app.use(errorsMiddleware);
 
 const connect = async () => {
   try {
-    await mongoose.connect('mongodb://127.0.0.1:27017/mestodb');
+    mongoose.set('strictQuery', true);
+    await mongoose.connect(`mongodb://${server}/${db}`);
     console.log('Подключение к MongoDB успешно.');
 
     app.listen(PORT, () => {
